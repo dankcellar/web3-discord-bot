@@ -1,0 +1,39 @@
+{
+  "name": "the-server",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=16.9.0"
+  },
+  "scripts": {
+    "start": "wrangler dev dist/index.js",
+    "build": "node src/build.js",
+    "register": "node src/register.js",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20240222.0",
+    "alchemy-sdk": "^3.2.0",
+    "axios": "^1.6.7",
+    "bad-words": "^3.0.4",
+    "cloudflare-siwe": "^1.0.11",
+    "discord-api-types": "^0.37.73",
+    "discord-interactions": "^3.4.0",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "fantasy-content-generator": "^4.9.1",
+    "hono": "^4.0.10",
+    "lodash": "^4.17.21",
+    "merkletreejs": "^0.3.11",
+    "nanoid": "^5.0.6",
+    "sequelize": "^6.37.1",
+    "siwe": "^2.1.4",
+    "viem": "^2.7.22"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "prettier-plugin-organize-imports": "^3.2.4",
+    "typescript": "^5.4.2",
+    "wrangler": "^3.32.0"
+  }
+}
