@@ -128,5 +128,4 @@ dist
 
 # Cloudflare wrangler
 .wrangler
-*.toml
 *.vars
