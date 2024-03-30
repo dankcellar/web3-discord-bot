@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 
 import Commands from './commands.js';
 
-config();
+config({ path: '.dev.vars' });
 
 // https://discord.com/developers/applications/330539844889477121
 const applicationId = '330539844889477121';

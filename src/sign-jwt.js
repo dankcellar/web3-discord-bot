@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 import { sign } from 'hono/jwt';
 
-config();
+config({ path: '.dev.vars' });
 
 const userId = 217775277349011456;
 const guildId = 1062603620887044166;
