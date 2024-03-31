@@ -75,7 +75,7 @@ guildGetRole.setName('get-roles');
 guildGetRole.setDescription('Get a guild role with a linked wallet');
 guildGetRole.addStringOption((option) => {
   option.setName('wallet');
-  option.setDescription('Your linked wallet address');
+  option.setDescription('Your connected Web3 wallet address');
   option.setAutocomplete(true);
   option.setRequired(true);
   return option;

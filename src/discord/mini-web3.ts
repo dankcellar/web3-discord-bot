@@ -42,7 +42,7 @@ export function scanAddress(chain, address) {
 export function findChain(chain) {
   const str = chain.toString().toLowerCase();
   const int = parseInt(str);
-  if (!chains[int]) throw new Error('Chain not found');
+  if (!chains[int]) return 1;
   return chains[int].id;
 }
 

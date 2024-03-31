@@ -1,18 +1,9 @@
-import { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import { KVNamespace } from '@cloudflare/workers-types';
 import { Routes } from 'discord-api-types/v10';
 import { InteractionResponseFlags } from 'discord-interactions';
 import { getContract } from 'viem';
 
 import { MINI_ABI, createProvider } from './mini-web3';
-
-export interface Binder {
-  DB: D1Database;
-  KV: KVNamespace;
-  DISCORD_TOKEN: string;
-  DISCORD_OAUTH_VER: string;
-  DISCORD_OAUTH_SYN: string;
-  AUTH_SECRET: string;
-}
 
 export const MAX_WALLETS = 10;
 export const MAX_COMMANDS = 100;
@@ -88,13 +79,13 @@ export async function getMembersFromDiscord(token: string, guildId: string, afte
       { headers: { Authorization: `Bot ${token}` } }
     );
     const members = await res.json();
-    return { members, snowflake: null };
+    return { members, snowflake: null }; // TODO get last members snowflake
   }
   const members = [];
   let snowflake = '0';
   let lastCount = 0;
   do {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     const res = await fetch(
       'https://discord.com/api/v10' + Routes.guildMembers(guildId) + `?limit=1000&after=${snowflake}`,
       { headers: { Authorization: `Bot ${token}` } }
@@ -186,28 +177,3 @@ export function abbreviateEthereumAddress(address: any, length: number = 6) {
   // Take the first 'length' characters and the last 'length' characters
   return `${address.slice(0, length)}...${address.slice(-length)}`;
 }
-
-// TODO use durable objects to use Discords websocket gateway
-
-// export async function discordInviteDelete(invite: any) {
-//   return Invites.update(
-//     { deleted: true },
-//     {
-//       where: {
-//         guildId: invite.guild.id,
-//         inviterId: invite.inviterId,
-//         code: invite.code,
-//       },
-//     }
-//   );
-// }
-
-// export async function discordInviteCreate(invite: any) {
-//   const inviteModel = await Invites.create({
-//     guildId: invite.guild.id,
-//     inviterId: invite.inviterId,
-//     code: invite.code,
-//     uses: invite.uses,
-//   });
-//   await Totals.create({ inviteId: inviteModel.get('id'), normal: invite.uses });
-// }
