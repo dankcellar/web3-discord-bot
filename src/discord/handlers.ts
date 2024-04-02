@@ -1,6 +1,7 @@
 import { KVNamespace } from '@cloudflare/workers-types';
 import { Routes } from 'discord-api-types/v10';
 import { InteractionResponseFlags } from 'discord-interactions';
+import { createHash } from 'node:crypto';
 import { getContract } from 'viem';
 
 import { MINI_ABI, createProvider } from './mini-web3';
@@ -176,4 +177,10 @@ export function abbreviateEthereumAddress(address: any, length: number = 6) {
   }
   // Take the first 'length' characters and the last 'length' characters
   return `${address.slice(0, length)}...${address.slice(-length)}`;
+}
+
+export function hashString(string1: string, string2: string) {
+  const combinedString = string1 + string2;
+  const hash = createHash('sha256').update(combinedString).digest('hex');
+  return hash;
 }

@@ -6,6 +6,7 @@ import {
   MAX_COMMANDS,
   MAX_WALLETS,
   addUsersDiscordRole,
+  hashString,
   idConvert,
   resolveColor,
   web3BalanceOfDiscordRoles,
@@ -42,10 +43,9 @@ const BLANK = '\u200B';
 // components?	array of components	message components
 // attachments? *	array of partial attachment objects	attachment objects with filename and description
 
-export async function discordVerify(database: D1Database, userId: string, state: string) {
+export async function discordVerify(database: D1Database, secret: string, userId: string) {
   const wallets: D1Result = await database.prepare('SELECT * FROM Wallets WHERE userId = ?').bind(userId).all();
   let str = `You have **${wallets.results.length}** active Web3 connections. (Maximum **${MAX_WALLETS}**)\n`;
-  str += `*Do **NOT** share the embedded link!*\n`;
   str += '```\n';
   wallets.results.forEach((wallet: any) => {
     str += `Guild: ${wallet.guildId} - Chain: ${wallet.chain}\n`;
@@ -53,7 +53,7 @@ export async function discordVerify(database: D1Database, userId: string, state:
   });
   str += '```\n';
   const url =
-    'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=token&redirect_uri=https%3A%2F%2Fraritynfts.xyz%2Fwallets&scope=identify';
+    'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Fwallets&scope=identify';
   return {
     embeds: [
       {
@@ -71,7 +71,7 @@ export async function discordVerify(database: D1Database, userId: string, state:
             type: COMPONENT_TYPE.BUTTON,
             label: 'Add New Wallet', // TODO change to Manage Wallets later
             style: BUTTON_STYLE.LINK,
-            url: `${url}&state=${state}`,
+            url: `${url}&state=${hashString(userId, secret)}`,
           },
         ],
       },
@@ -80,16 +80,15 @@ export async function discordVerify(database: D1Database, userId: string, state:
   };
 }
 
-export async function discordSyncRoles(database: D1Database, guildId: string, state: string) {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+export async function discordSyncRoles(database: D1Database, secret: string, guildId: string) {
   const url =
-    'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=token&redirect_uri=https%3A%2F%2Fraritynfts.xyz%2Froles&scope=identify';
+    'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Froles&scope=identify';
   return {
     embeds: [
       {
         color: resolveColor('purple'),
         title: 'Discord Role Sync (Admin)',
-        description: 'Do **NOT** share the embedded link!',
+        // description: 'Do **NOT** share the embedded link!',
         timestamp: new Date().toISOString(),
       },
     ],
@@ -101,7 +100,7 @@ export async function discordSyncRoles(database: D1Database, guildId: string, st
             type: COMPONENT_TYPE.BUTTON,
             label: 'Start Guild Sync',
             style: BUTTON_STYLE.LINK,
-            url: `${url}&state=${state}`,
+            url: `${url}&state=${hashString(guildId, secret)}`,
           },
         ],
       },

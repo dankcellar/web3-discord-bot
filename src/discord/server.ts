@@ -1,9 +1,10 @@
 import { D1Database, D1Response, D1Result, KVNamespace } from '@cloudflare/workers-types';
 import { InteractionResponseType, InteractionType, verifyKey } from 'discord-interactions';
 import { Context, Hono } from 'hono';
+import { getCookie, setCookie } from 'hono/cookie';
 import { cors } from 'hono/cors';
 import { decode, sign, verify } from 'hono/jwt';
-import * as crypto from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { getAddress } from 'viem';
 
 import { SiweMessage, generateNonce } from '../siwe/index';
@@ -14,7 +15,7 @@ import {
   abbreviateEthereumAddress,
   addUsersDiscordRole,
   getMembersFromDiscord,
-  notAdminDiscord,
+  hashString,
   removeUsersDiscordRole,
   web3BalanceOfDiscordRoles,
 } from './handlers';
@@ -47,10 +48,65 @@ router.use('*', async (ctx, next) => {
   return await corsMiddleware(ctx, next);
 });
 
-router.notFound((ctx) => ctx.text('Not found', 404));
-
 router.all('/', (ctx: Context) => {
   return ctx.text(`👋 ${new Date().toISOString()}`);
+});
+
+/**
+ * Oauth2 interactions
+ */
+router.get('/oauth2/discord/:redirect', async (ctx: Context) => {
+  const { code, state } = ctx.req.query();
+  if (!state) return ctx.text('State missing', 422);
+  const redirect = ctx.req.param('redirect');
+  const authReq = await fetch('https://discord.com/api/oauth2/token', {
+    method: 'POST',
+    body: new URLSearchParams({
+      code,
+      client_id: ctx.env.CLIENT_ID,
+      client_secret: ctx.env.CLIENT_SECRET,
+      grant_type: 'authorization_code',
+      redirect_uri: ctx.env.DEV
+        ? `http://localhost:8787/oauth2/discord/${redirect}`
+        : `https://api.raritynfts.xyz/oauth2/discord/${redirect}`,
+      // scope: 'identify',
+    }),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+  });
+  const authData = await authReq.json();
+  if (authData.error) return ctx.text(authData.error_description, 424);
+  const { access_token, token_type, expires_in, refresh_token, scope } = authData;
+  // GET/users/@me/guilds/{guild.id}/member
+  const userReq = await fetch('https://discord.com/api/users/@me', {
+    headers: {
+      Authorization: `${token_type} ${access_token}`,
+    },
+  });
+  const userData = await userReq.json();
+  if (authData.error) return ctx.text(authData.error_description, 424);
+  const hash = hashString(userData.id, ctx.env.AUTH_SECRET);
+  if (state !== hash) return ctx.text('State mismatch', 422);
+
+  let key = redirect.toString();
+  if (redirect === 'wallets') key = 'wallets';
+  if (redirect === 'roles') key = 'sync-roles';
+  const store: KVNamespace = ctx.env.KV;
+  const json: string = await store.get(`${key}-${userData.id}`);
+  if (!json) return ctx.text('State expired', 422);
+  const [userId, guildId, permissions] = json.split('-');
+  const jwt = await sign({ userId, guildId, permissions }, ctx.env.AUTH_SECRET);
+
+  setCookie(ctx, 'auth', jwt, {
+    domain: ctx.env.DEV ? `127.0.0.1` : `.raritynfts.xyz`,
+    // secure: true,
+    // httpOnly: true,
+    // sameSite: 'None',
+  });
+  return ctx.redirect(
+    ctx.env.DEV ? `http://localhost:4321/${redirect}?state=${jwt}` : `https://raritynfts.xyz/${redirect}`
+  );
 });
 
 /**
@@ -152,7 +208,7 @@ router.put('/dapp/wallets/:address', async (ctx: Context) => {
   const query: D1Response = await ctx.env.DB.prepare(
     'INSERT INTO Wallets (id,address,chain,guildId,userId) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING'
   )
-    .bind(crypto.randomUUID(), getAddress(siweMessage.address), siweMessage.chainId, userData.guildId, userData.userId)
+    .bind(randomUUID(), getAddress(siweMessage.address), siweMessage.chainId, userData.guildId, userData.userId)
     .run();
   return ctx.json({ ...query });
 });
@@ -196,8 +252,8 @@ router.post('/discord/interactions', async (ctx: Context) => {
 });
 
 router.get('/discord/guilds/:guildId/members', async (ctx: Context) => {
-  const userData = await verifyJwtRequest(ctx);
-  if (!userData) return ctx.text('Unauthorized', 401);
+  // const userData = await verifyJwtRequest(ctx);
+  // if (!userData) return ctx.text('Unauthorized', 401);
   const guildId = ctx.req.param('guildId');
   const after = ctx.req.query('after');
   const { members, snowflake } = await getMembersFromDiscord(ctx.env.DISCORD_TOKEN, guildId, after);
@@ -252,31 +308,31 @@ async function doInteraction(env: Bindings, interaction: any) {
   const data = interaction.data;
   const guildId = interaction.guild_id;
   const userId = !interaction.member ? interaction.user.id : interaction.member.user.id;
-  const username = !interaction.member ? interaction.user.username : interaction.member.user.username;
-  const avatar = !interaction.member ? interaction.user.avatar : interaction.member.user.avatar;
+  // const username = !interaction.member ? interaction.user.username : interaction.member.user.username;
+  // const avatar = !interaction.member ? interaction.user.avatar : interaction.member.user.avatar;
   const permissions = !interaction['member'] ? '0' : interaction['member']['permissions'];
   const isAdmin = Boolean(parseInt(permissions) & 8) || ['234657292610568193', '217775277349011456'].includes(userId);
 
-  switch (data.name) {
-    case 'add-role':
-    case 'remove-role':
-    case 'sync-roles':
-      const notAdminEmbed = isAdmin ? null : notAdminDiscord();
-      if (notAdminEmbed)
-        return {
-          data: notAdminEmbed,
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        };
-    case 'get-roles':
-    // const rateLimitEmbed = await rateLimitDiscord(env.KV, userId, `${data.name}|${userId}`, 300);
-    // if (rateLimitEmbed)
-    //   return {
-    //     data: rateLimitEmbed,
-    //     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    //   };
-    default:
-      console.info(data.name, data.options, username, userId, guildId, permissions);
-  }
+  // switch (data.name) {
+  //   case 'add-role':
+  //   case 'remove-role':
+  //   case 'sync-roles':
+  //     const notAdminEmbed = isAdmin ? null : notAdminDiscord();
+  //     if (notAdminEmbed)
+  //       return {
+  //         data: notAdminEmbed,
+  //         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+  //       };
+  //   case 'get-roles':
+  //     const rateLimitEmbed = await rateLimitDiscord(env.KV, userId, `${data.name}|${userId}`, 300);
+  //     if (rateLimitEmbed)
+  //       return {
+  //         data: rateLimitEmbed,
+  //         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+  //       };
+  //   default:
+  //     console.info(data.name, data.options, username, userId, guildId, permissions);
+  // }
 
   switch (data.name) {
     case 'roll':
@@ -285,12 +341,12 @@ async function doInteraction(env: Bindings, interaction: any) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       };
     case 'wallets':
+      await env.KV.put(`${data.name}-${userId}`, `${userId}-${guildId}-${permissions}`, {
+        expirationTtl: 86400000,
+        // metadata: { userId, guildId, permissions },
+      });
       return {
-        data: await discordVerify(
-          env.DB,
-          userId,
-          await sign({ userId, guildId, username, permissions, avatar }, env.AUTH_SECRET)
-        ),
+        data: await discordVerify(env.DB, env.AUTH_SECRET, userId),
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       };
     case 'view-roles':
@@ -328,12 +384,12 @@ async function doInteraction(env: Bindings, interaction: any) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       };
     case 'sync-roles':
+      await env.KV.put(`${data.name}-${guildId}`, `${userId}-${guildId}-${permissions}`, {
+        expirationTtl: 86400000,
+        // metadata: { userId, guildId, permissions },
+      });
       return {
-        data: await discordSyncRoles(
-          env.DB,
-          guildId,
-          await sign({ userId, guildId, username, permissions, avatar }, env.AUTH_SECRET)
-        ),
+        data: await discordSyncRoles(env.DB, env.AUTH_SECRET, guildId),
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       };
     default:
@@ -353,11 +409,13 @@ async function verifyDiscordRequest(ctx: Context) {
 }
 
 async function verifyJwtRequest(ctx: Context) {
+  const cookie = getCookie(ctx, 'auth');
+  if (cookie) return await verify(cookie, ctx.env.AUTH_SECRET);
   const token = ctx.req.header('Authorization');
-  if (!token) return null;
-  const secret = ctx.env.AUTH_SECRET;
-  return decode(token.slice(7)).payload;
-  // return await verify(token.slice(7), secret);
+  if (token) return await verify(token, ctx.env.AUTH_SECRET);
+  const state = ctx.req.query('state');
+  if (state) return await verify(state, ctx.env.AUTH_SECRET);
+  throw new Error('Who are you?');
 }
 
 const server = {
@@ -372,42 +430,3 @@ const server = {
 };
 
 export default server;
-
-// router.get('/oauth2/discord/:redirect', async (ctx: Context) => {
-//   const { code, state } = ctx.req.query();
-//   const redirect = ctx.req.param('redirect');
-//   const grantReq = await fetch('https://discord.com/api/oauth2/token', {
-//     method: 'POST',
-//     body: new URLSearchParams({
-//       code,
-//       client_id: ctx.env.CLIENT_ID,
-//       client_secret: ctx.env.CLIENT_SECRET,
-//       grant_type: 'authorization_code',
-//       // redirect_uri: ctx.env.DEV ? `http://localhost:4231/${redirect}` : `https://raritynfts.xyz/${redirect}`,
-//       // scope: 'identify',
-//     }),
-//     headers: {
-//       'Content-Type': 'application/x-www-form-urlencoded',
-//     },
-//   });
-
-//   const { access_token, token_type, expires_in, refresh_token, scope } = await grantReq.json();
-//   const memberReq = await fetch('https://discord.com/api/users/@me', {
-//     headers: { authorization: `${token_type} ${access_token}` },
-//   });
-
-//   const member = await memberReq.json();
-//   if (!member.user) return ctx.text('Discord API request failed', 424);
-//   const jwt = await sign(
-//     {
-//       guildId: state,
-//       userId: member.user.id,
-//       username: member.user.username,
-//       avatar: member.user.avatar,
-//       permissions: member.permissions,
-//     },
-//     ctx.env.AUTH_SECRET
-//   );
-
-//   return ctx.redirect(`https://raritynfts.xyz/${redirect}?token=${jwt}`);
-// });

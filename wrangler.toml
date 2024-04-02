@@ -1,14 +1,16 @@
 name = "api"
 main = "src/discord/server.ts"
 compatibility_date = "2024-03-29"
-compatibility_flags = ["nodejs_compat", "nodejs_als"]
+compatibility_flags = ["nodejs_compat"]
 logpush = true
 
 [[kv_namespaces]]
 binding = "KV"
-id = "a7e8363bbcdc45c3b7dd4a435542bd4f"
+id = "b1f26e7bf10143c8b5e170e15db6505a"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "discord-db"
 database_id = "c6506d9f-aa59-4ca7-9ada-cfd02ffc2d39"
+
+[vars]
