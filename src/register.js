@@ -23,19 +23,38 @@ try {
   Object.values(Commands).forEach((command) => {
     commands.push(command.toJSON());
   });
-  makeRequest(url, commands);
+  await makeRequest(url, commands);
+
+  const url2 = `https://discord.com/api/v10/applications/${applicationId}/role-connections/metadata`;
+  // supported types: number_lt=1, number_gt=2, number_eq=3 number_neq=4, datetime_lt=5, datetime_gt=6, boolean_eq=7, boolean_neq=8
+  const body = [
+    {
+      key: 'wallets',
+      name: 'Wallets Connected',
+      description: 'Wallets connected greater than',
+      type: 2,
+    },
+    // {
+    //   key: 'first',
+    //   name: 'First Users Verified',
+    //   description: 'Users verified in this guild first',
+    //   type: 1,
+    // },
+  ];
+
+  await makeRequest(url2, body);
 } catch (err) {
   console.error(err);
 }
 
-async function makeRequest(url, commands) {
+async function makeRequest(url, body) {
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bot ${token}`,
     },
     method: 'PUT',
-    body: JSON.stringify(commands),
+    body: JSON.stringify(body),
   });
 
   if (response.ok) {

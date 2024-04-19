@@ -1,16 +1,10 @@
-import { D1Database, D1Response, D1Result } from '@cloudflare/workers-types';
+import { D1Response, D1Result } from '@cloudflare/workers-types';
 import { InteractionResponseFlags } from 'discord-interactions';
+import { ExecutionContext } from 'hono';
 import { getAddress } from 'viem';
 
-import {
-  MAX_COMMANDS,
-  MAX_WALLETS,
-  addUsersDiscordRole,
-  hashString,
-  idConvert,
-  resolveColor,
-  web3BalanceOfDiscordRoles,
-} from './handlers';
+import { MAX_COMMANDS, MAX_WALLETS, doGetRoles, hashString, idConvert, resolveColor } from './handlers';
+import { Bindings } from './server';
 
 const BUTTON_STYLE = {
   PRIMARY: 1,
@@ -43,8 +37,9 @@ const BLANK = '\u200B';
 // components?	array of components	message components
 // attachments? *	array of partial attachment objects	attachment objects with filename and description
 
-export async function discordVerify(database: D1Database, secret: string, userId: string) {
-  const wallets: D1Result = await database.prepare('SELECT * FROM Wallets WHERE userId = ?').bind(userId).all();
+export async function discordVerify(env: Bindings, guildId: string, userId: string) {
+  const state = hashString(userId, env.AUTH_SECRET);
+  const wallets: D1Result = await env.DB.prepare('SELECT * FROM Wallets WHERE userId = ?').bind(userId).all();
   let str = `You have **${wallets.results.length}** active Web3 connections. (Maximum **${MAX_WALLETS}**)\n`;
   str += '```\n';
   wallets.results.forEach((wallet: any) => {
@@ -71,7 +66,7 @@ export async function discordVerify(database: D1Database, secret: string, userId
             type: COMPONENT_TYPE.BUTTON,
             label: 'Add New Wallet', // TODO change to Manage Wallets later
             style: BUTTON_STYLE.LINK,
-            url: `${url}&state=${hashString(userId, secret)}`,
+            url: `${url}&state=${state}`,
           },
         ],
       },
@@ -80,7 +75,8 @@ export async function discordVerify(database: D1Database, secret: string, userId
   };
 }
 
-export async function discordSyncRoles(database: D1Database, secret: string, guildId: string) {
+export async function discordSyncRoles(env: Bindings, guildId: string, userId: string) {
+  const state = hashString(userId, env.AUTH_SECRET);
   const url =
     'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Froles&scope=identify';
   return {
@@ -100,7 +96,7 @@ export async function discordSyncRoles(database: D1Database, secret: string, gui
             type: COMPONENT_TYPE.BUTTON,
             label: 'Start Guild Sync',
             style: BUTTON_STYLE.LINK,
-            url: `${url}&state=${hashString(guildId, secret)}`,
+            url: `${url}&state=${state}`,
           },
         ],
       },
@@ -109,9 +105,41 @@ export async function discordSyncRoles(database: D1Database, secret: string, gui
   };
 }
 
-export async function discordViewRoles(database: D1Database, guildId: string) {
-  const commands: D1Result = await database
-    .prepare('SELECT source, formula, roleId, chain FROM Commands WHERE guildId = ?')
+export async function discordLandingPage(env: Bindings, guildId: string, userId: string) {
+  // const state = hashString(userId, env.AUTH_SECRET);
+  // const url =
+  //   'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Froles&scope=identify';
+  return {
+    embeds: [
+      {
+        color: resolveColor('hacker'),
+        title: 'Verify Your Assets',
+        description:
+          'This is a read-only connection. Do not share your private keys. We will never ask for your seed phrase. We will never DM you.',
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    components: [
+      {
+        type: COMPONENT_TYPE.ACTION_ROW,
+        components: [
+          {
+            type: COMPONENT_TYPE.BUTTON,
+            label: "Let's go!",
+            style: BUTTON_STYLE.PRIMARY,
+            custom_id: 'wallets',
+            disabled: false,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export async function discordViewRoles(env: Bindings, guildId: string) {
+  const commands: D1Result = await env.DB.prepare(
+    'SELECT source, formula, roleId, chain FROM Commands WHERE guildId = ?'
+  )
     .bind(guildId)
     .all();
   const embedsMap = {};
@@ -151,21 +179,21 @@ export async function discordViewRoles(database: D1Database, guildId: string) {
 }
 
 export async function discordAddRole(
-  database: D1Database,
+  env: Bindings,
   roleId: string,
   source: string,
   chain: number,
   formula: string,
   guildId: string
 ) {
-  const count: number = await database
-    .prepare('SELECT COUNT(id) AS total FROM Commands WHERE guildId = ?')
+  const count: number = await env.DB.prepare('SELECT COUNT(id) AS total FROM Commands WHERE guildId = ?')
     .bind(guildId)
     .first('total');
   if (count >= MAX_COMMANDS) throw new Error('You have reached the maximum amount of roles for this guild.');
   const command = 'web3'; // TODO figure out other commands
-  const query: D1Response = await database
-    .prepare('INSERT INTO Commands (id,command,chain,guildId,roleId,source,formula) VALUES (?,?,?,?,?,?,?)')
+  const query: D1Response = await env.DB.prepare(
+    'INSERT INTO Commands (id,command,chain,guildId,roleId,source,formula) VALUES (?,?,?,?,?,?,?)'
+  )
     .bind(crypto.randomUUID(), command, chain, guildId, roleId, getAddress(source), formula)
     .run();
   if (!query.success) throw new Error(query.error);
@@ -173,7 +201,7 @@ export async function discordAddRole(
     embeds: [
       {
         color: resolveColor('purple'),
-        title: 'New Role Added',
+        title: 'New Role Added (Admin)',
         description: 'You can view all the guild roles by using /view-roles',
         timestamp: new Date().toISOString(),
       },
@@ -182,9 +210,8 @@ export async function discordAddRole(
   };
 }
 
-export async function discordRemoveRole(database: D1Database, commandId: string, guildId: string) {
-  const query: D1Response = await database
-    .prepare('DELETE FROM Commands WHERE id = ? AND guildId = ?')
+export async function discordRemoveRole(env: Bindings, commandId: string, guildId: string) {
+  const query: D1Response = await env.DB.prepare('DELETE FROM Commands WHERE id = ? AND guildId = ?')
     .bind(commandId, guildId)
     .run();
   if (!query.success) throw new Error(query.error);
@@ -192,7 +219,7 @@ export async function discordRemoveRole(database: D1Database, commandId: string,
     embeds: [
       {
         color: resolveColor('purple'),
-        title: 'Deleted Sync Role',
+        title: 'Deleted Sync Role (Admin)',
         description: 'You can view all the guild roles by using /view-roles',
         timestamp: new Date().toISOString(),
       },
@@ -202,18 +229,21 @@ export async function discordRemoveRole(database: D1Database, commandId: string,
 }
 
 export async function discordGetRoles(
-  database: D1Database,
-  token: string,
+  exc: ExecutionContext,
+  env: Bindings,
+  webhookToken: string,
   address: string,
   chain: number,
   guildId: string,
   userId: string
 ) {
   // Register this wallet with a possible new chain to this Discord guild
-  const wallets: D1Result = await database
-    .prepare('SELECT id, address, chain, guildId FROM Wallets WHERE userId = ? ORDER BY updatedAt DESC')
+  const wallets: D1Result = await env.DB.prepare(
+    'SELECT id, address, chain, guildId FROM Wallets WHERE userId = ? ORDER BY updatedAt DESC'
+  )
     .bind(userId)
     .all();
+
   const wallet = { id: null, address: null, chain: null, guildId: guildId, userId: userId };
   wallets.results.forEach((w: any) => {
     // Best guess the first wallet from order by updatedAt
@@ -228,39 +258,40 @@ export async function discordGetRoles(
 
   // If this wallet is not apart of guild and user can add more wallets, do insert
   if (!wallet.id && wallets.results.length < MAX_WALLETS) {
-    const query: D1Response = await database
-      .prepare('INSERT INTO Wallets (id,address,chain,guildId,userId) VALUES (?,?,?,?,?)')
+    const query: D1Response = await env.DB.prepare(
+      'INSERT INTO Wallets (id,address,chain,guildId,userId) VALUES (?,?,?,?,?)'
+    )
       .bind(crypto.randomUUID(), getAddress(wallet.address), wallet.chain, wallet.guildId, wallet.userId)
       .run();
   } else {
-    const query: D1Response = await database
-      .prepare('UPDATE Wallets SET updatedAt = CURRENT_TIMESTAMP WHERE id = ?')
+    const query: D1Response = await env.DB.prepare('UPDATE Wallets SET updatedAt = CURRENT_TIMESTAMP WHERE id = ?')
       .bind(wallet.id)
       .run();
   }
 
-  const commands: D1Result = await database
-    .prepare('SELECT source, formula, roleId FROM Commands WHERE guildId = ? AND chain = ?')
+  // Get all the role commands that have been added to this guild
+  const commands: D1Result = await env.DB.prepare(
+    'SELECT source, formula, roleId FROM Commands WHERE guildId = ? AND chain = ?'
+  )
     .bind(guildId, wallet.chain)
     .all();
-  const roleIdResults = await web3BalanceOfDiscordRoles(wallet.chain, [wallet], commands.results);
-  for (const roleId of roleIdResults.passed) {
-    const data = await addUsersDiscordRole(token, guildId, userId, roleId);
-    console.log('addUsersDiscordRole', data);
-    // await database.prepare('INSERT INTO Roles (id,guildId,userId,roleId) VALUES (?,?,?,?) ON CONFLICT DO NOTHING')
-    //   .bind(crypto.randomUUID(), guildId, userId, roleId)
-    //   .run();
-  }
+
+  exc.waitUntil(doGetRoles(env.DISCORD_TOKEN, env.CLIENT_ID, webhookToken, guildId, userId, wallet, commands.results));
 
   return {
     embeds: [
       {
-        color: resolveColor('hacker'),
-        title: 'Successfully Synced Roles to Wallet',
-        description: `${idConvert(userId)} has synced **${roleIdResults.passed.length}** guild role(s) to their wallet!`,
+        color: resolveColor('bitcoin'),
+        title: 'Syncing Roles to Wallet',
+        description: `${idConvert(userId)} is syncing guild role(s) to their wallet!`,
         timestamp: new Date().toISOString(),
       },
     ],
     flags: InteractionResponseFlags.EPHEMERAL,
   };
 }
+
+// await database
+//   .prepare('INSERT INTO Roles (id,guildId,userId,roleId) VALUES (?,?,?,?) ON CONFLICT DO NOTHING')
+//   .bind(crypto.randomUUID(), guildId, userId, roleId)
+//   .run();

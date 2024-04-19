@@ -14,13 +14,6 @@ globalRoll.addStringOption((option) => {
 });
 
 /**
- * globalWallets
- */
-export const globalWallets = new SlashCommandBuilder();
-globalWallets.setName('view-wallets');
-globalWallets.setDescription('View and manage your wallets');
-
-/**
  * globalViewer
  */
 export const globalViewer = new SlashCommandBuilder();
@@ -135,26 +128,12 @@ guildRemoveRole.addStringOption((option) => {
 guildRemoveRole.setDefaultMemberPermissions('0');
 
 /**
- * guildExportRole
+ * guildLandingPage
  */
-export const guildExportRole = new SlashCommandBuilder();
-guildExportRole.setName('export-role');
-guildExportRole.setDescription('ADMIN ONLY | Export all users with a role into a CSV file');
-guildExportRole.addRoleOption((option) => {
-  option.setName('role');
-  option.setDescription('Select a guild role to export');
-  option.setRequired(true);
-  return option;
-});
-guildExportRole.setDefaultMemberPermissions('0');
-
-/**
- * guildBulkAddRole
- */
-export const guildBulkAddRole = new SlashCommandBuilder();
-guildBulkAddRole.setName('bulk-add');
-guildBulkAddRole.setDescription('ADMIN ONLY | IN DEVELOPMENT');
-guildBulkAddRole.setDefaultMemberPermissions('0');
+export const guildLandingPage = new SlashCommandBuilder();
+guildLandingPage.setName('landing');
+guildLandingPage.setDescription('ADMIN ONLY | Create a landing page for wallet verifications');
+guildLandingPage.setDefaultMemberPermissions('0');
 
 /**
  * guildContextThing
@@ -177,12 +156,10 @@ const COMMANDS = {
   ADD_ROLE: guildAddRole,
   REMOVE_ROLE: guildRemoveRole,
   SYNC_ROLES: guildSyncRoles,
+  LANDING: guildLandingPage,
 
   // Deprecated commands
-  // WALLETS: globalWallets,
-  // EXPORT_ROLE: guildExportRole,
   // VIEWER: globalViewer,
-  // BULK_ADD: guildBulkAddRole,
 };
 
 export default COMMANDS;

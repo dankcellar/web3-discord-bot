@@ -22,6 +22,24 @@ export const MAX_COMMANDS = 100;
 // #9ccc9c 	RGB(156, 204, 156) 	— 	—
 // #2b5329 	RGB(43, 83, 41) 	— 	—
 
+export async function doGetRoles(token, clientId, webhookToken, guildId, userId, wallet, commands) {
+  const roleIdResults = await web3BalanceOfDiscordRoles(wallet.chain, [wallet], commands);
+  for (const roleId of roleIdResults.passed) {
+    const data = await addUsersDiscordRole(token, guildId, userId, roleId);
+  }
+  const data = await editWebhookMessage(clientId, webhookToken, {
+    embeds: [
+      {
+        color: resolveColor('hacker'),
+        title: 'Successfully Synced Roles to Wallet',
+        description: `${idConvert(userId)} has synced **${roleIdResults.passed.length}** guild role(s) to their wallet!`,
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  });
+  return { success: true };
+}
+
 export async function web3BalanceOfDiscordRoles(chain: number, wallets: any[], commands: any[]) {
   // Run this on a per chain basis
   const publicClient = createProvider(chain);
@@ -47,6 +65,35 @@ export async function web3BalanceOfDiscordRoles(chain: number, wallets: any[], c
   }
   const passed = Array.from(roleIds);
   const failed = Array.from(allRoleIds).filter((roleId) => !roleIds.has(roleId));
+  return { passed, failed };
+}
+
+export async function web3BalanceOfDiscordRolesFaster(chain: number, wallets: any[], commands: any[]) {
+  // Run this on a per chain basis
+  const publicClient = createProvider(chain);
+  const passedIds: Set<string> = new Set();
+  const failedIds: Set<string> = new Set();
+  const promises: Promise<bigint>[] = [];
+  for (const command of commands) {
+    for (const wallet of wallets) {
+      const contract = getContract({
+        address: command.source,
+        abi: MINI_ABI,
+        //@ts-ignore
+        client: publicClient,
+      });
+      //@ts-ignore
+      promises.push(contract.read.balanceOf([wallet.address]));
+    }
+  }
+  const balanceOfArray: bigint[] = await Promise.all(promises);
+  balanceOfArray.forEach((balanceOf, index) => {
+    const command = commands[index];
+    if (BigInt(balanceOf) >= BigInt(parseInt(command.formula))) passedIds.add(command.roleId);
+    else failedIds.add(command.roleId);
+  });
+  const passed = Array.from(passedIds);
+  const failed = Array.from(failedIds);
   return { passed, failed };
 }
 
@@ -110,17 +157,27 @@ export async function getMembersFromDiscord(token: string, guildId: string, afte
   return { members, snowflake };
 }
 
+export async function editWebhookMessage(clientId: string, webhookToken: string, body: any) {
+  const res = await fetch(`https://discord.com/api/v10/webhooks/${clientId}/${webhookToken}/messages/@original`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  return await res.json();
+}
+
 export async function rateLimitDiscord(client: KVNamespace, userId: string, key: string, limit: number) {
+  // If the user is a dev, don't rate limit
+  if (['234657292610568193', '217775277349011456'].includes(userId)) return null;
   // Rate limit this function
-  const { get, put } = client;
-  const value = await get(key, 'text');
-  const ttl = ['234657292610568193', '217775277349011456'].includes(userId) ? 60 : limit;
+  const value = await client.get(key, 'text');
   if (!value) {
     const dateLimit = new Date(Date.now() + limit).toUTCString();
-    await put(key, dateLimit, {
+    await client.put(key, dateLimit, {
       // metadata: { someMetadataKey: 'someMetadataValue' },
-      // expiration: Date.now() + ttl,
-      expirationTtl: ttl,
+      expirationTtl: limit,
     });
     return null;
   }
@@ -143,7 +200,21 @@ export async function notAdminDiscord() {
       {
         color: resolveColor('purple'),
         title: 'Not An Admin',
-        description: 'Only an admin can use this command.',
+        description: 'You should not be able to do that!',
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    flags: InteractionResponseFlags.EPHEMERAL,
+  };
+}
+
+export async function failedToRespond() {
+  return {
+    embeds: [
+      {
+        color: resolveColor('purple'),
+        title: 'Something Went Wrong',
+        description: 'Please try again or contact support!',
         timestamp: new Date().toISOString(),
       },
     ],
