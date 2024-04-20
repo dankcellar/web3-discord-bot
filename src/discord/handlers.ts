@@ -22,7 +22,15 @@ export const MAX_COMMANDS = 100;
 // #9ccc9c 	RGB(156, 204, 156) 	— 	—
 // #2b5329 	RGB(43, 83, 41) 	— 	—
 
-export async function doGetRoles(token, clientId, webhookToken, guildId, userId, wallet, commands) {
+export async function doGetRoles(
+  token: string,
+  clientId: string,
+  webhookToken: string,
+  guildId: string,
+  userId: string,
+  wallet: any,
+  commands: any[]
+) {
   const roleIdResults = await web3BalanceOfDiscordRoles(wallet.chain, [wallet], commands);
   for (const roleId of roleIdResults.passed) {
     const data = await addUsersDiscordRole(token, guildId, userId, roleId);
@@ -120,31 +128,25 @@ export async function getMemberFromDiscord(token: string, guildId: string, userI
   return await res.json();
 }
 
-export async function getMembersFromDiscord(token: string, guildId: string, after: string = null) {
-  if (!!after) {
-    const res = await fetch(
-      'https://discord.com/api/v10' + Routes.guildMembers(guildId) + `?limit=1000&after=${after}`,
-      { headers: { Authorization: `Bot ${token}` } }
-    );
-    const members = await res.json();
-    return { members, snowflake: null }; // TODO get last members snowflake
-  }
-  const members = [];
-  let snowflake = '0';
-  let lastCount = 0;
-  do {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const res = await fetch(
-      'https://discord.com/api/v10' + Routes.guildMembers(guildId) + `?limit=1000&after=${snowflake}`,
-      { headers: { Authorization: `Bot ${token}` } }
-    );
-    const guildMembers = await res.json();
-    if (!Array.isArray(guildMembers)) break;
-    lastCount = guildMembers.length;
-    for (const member of guildMembers) {
+export async function getMembersFromDiscord(
+  token: string,
+  guildId: string,
+  after: string,
+  limit: string,
+  full: boolean
+) {
+  const res = await fetch(
+    'https://discord.com/api/v10' + Routes.guildMembers(guildId) + `?limit=${parseInt(limit)}&after=${after}`,
+    { headers: { Authorization: `Bot ${token}` } }
+  );
+  const members = await res.json();
+  if (!Array.isArray(members)) throw new Error('Failed to get members from Discord');
+  let snowflake = members.length > 0 ? members[members.length - 1].user.id : '0';
+  if (!full) {
+    const miniMembers = [];
+    for (const member of members) {
       if (snowflake < member.user.id) snowflake = member.user.id;
-      if (member.user.bot) continue;
-      members.push({
+      miniMembers.push({
         id: member.user.id,
         username: member.user.username,
         bot: member.user.bot,
@@ -153,8 +155,10 @@ export async function getMembersFromDiscord(token: string, guildId: string, afte
         permissions: member.permissions,
       });
     }
-  } while (lastCount > 0);
-  return { members, snowflake };
+    return { members: miniMembers, snowflake: snowflake };
+  } else {
+    return { members: members, snowflake: snowflake };
+  }
 }
 
 export async function editWebhookMessage(clientId: string, webhookToken: string, body: any) {

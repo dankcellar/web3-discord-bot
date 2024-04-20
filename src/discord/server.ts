@@ -343,8 +343,10 @@ router.get('/discord/linked-roles', async (ctx: Context) => {
 
 router.get('/discord/guilds/:guildId/members', async (ctx: Context) => {
   const guildId = ctx.req.param('guildId');
-  const after = ctx.req.query('after');
-  const { members, snowflake } = await getMembersFromDiscord(ctx.env.DISCORD_TOKEN, guildId, after);
+  const after = ctx.req.query('after') || '0';
+  const limit = ctx.req.query('limit') || '1';
+  const full = !!ctx.req.query('full');
+  const { members, snowflake } = await getMembersFromDiscord(ctx.env.DISCORD_TOKEN, guildId, after, limit, full);
   return ctx.json({ members, snowflake });
 });
 
