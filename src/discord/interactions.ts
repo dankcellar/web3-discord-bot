@@ -180,6 +180,7 @@ export async function discordViewRoles(env: Bindings, guildId: string) {
 
 export async function discordAddRole(
   env: Bindings,
+  command: string,
   roleId: string,
   source: string,
   chain: number,
@@ -190,7 +191,6 @@ export async function discordAddRole(
     .bind(guildId)
     .first('total');
   if (count >= MAX_COMMANDS) throw new Error('You have reached the maximum amount of roles for this guild.');
-  const command = 'web3'; // TODO figure out other commands
   const query: D1Response = await env.DB.prepare(
     'INSERT INTO Commands (id,command,chain,guildId,roleId,source,formula) VALUES (?,?,?,?,?,?,?)'
   )

@@ -87,6 +87,12 @@ export const guildAddRole = new SlashCommandBuilder();
 guildAddRole.setName('add-role');
 guildAddRole.setDescription('ADMIN ONLY | Add a guild role for wallet verifications');
 guildAddRole.addRoleOption((option) => {
+  option.setName('name');
+  option.setDescription('Give this smart contract role a name');
+  option.setRequired(true);
+  return option;
+});
+guildAddRole.addRoleOption((option) => {
   option.setName('role');
   option.setDescription('Select a role to give guild member');
   option.setRequired(true);

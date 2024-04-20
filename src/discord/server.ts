@@ -485,6 +485,7 @@ async function doInteraction(exc: ExecutionContext, env: Bindings, interaction: 
           data.options[1].value,
           data.options[2].value,
           data.options[3].value,
+          data.options[4].value,
           guildId
         ),
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
