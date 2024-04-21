@@ -140,7 +140,7 @@ export async function getMembersFromDiscord(
     { headers: { Authorization: `Bot ${token}` } }
   );
   const members = await res.json();
-  if (!Array.isArray(members)) throw new Error('Failed to get members from Discord');
+  if (!Array.isArray(members)) return { members: [], snowflake: '9999999999999999999' };
   let snowflake = members.length > 0 ? members[members.length - 1].user.id : '0';
   if (!full) {
     const miniMembers = [];

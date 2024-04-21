@@ -366,6 +366,7 @@ router.get('/discord/guilds/:guildId/members', async (ctx: Context) => {
   const after = ctx.req.query('after') || '0';
   const limit = ctx.req.query('limit') || '1';
   const full = !!ctx.req.query('full');
+  await new Promise((resolve) => setTimeout(resolve, 1000));
   const { members, snowflake } = await getMembersFromDiscord(ctx.env.DISCORD_TOKEN, guildId, after, limit, full);
   return ctx.json({ members, snowflake });
 });
@@ -548,6 +549,7 @@ async function verifyJwtRequest(ctx: Context) {
   if (token) return await verify(token, ctx.env.AUTH_SECRET);
   const state = ctx.req.query('state');
   if (state) return await verify(state, ctx.env.AUTH_SECRET);
+  console.log('No token found', { cookie, token, state });
   throw new Error('Who are you?');
 }
 
