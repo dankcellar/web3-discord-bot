@@ -235,7 +235,7 @@ router.put('/dapp/wallets/:address', async (ctx: Context) => {
   return ctx.json({ ...query });
 });
 
-router.post('/dapp/models/:model', async (ctx: Context) => {
+router.post('/dapp/models/:model/find', async (ctx: Context) => {
   const userData = await verifyJwtRequest(ctx);
   if (!userData) return ctx.text('Unauthorized', 401);
   const isAllowed = ['234657292610568193', '217775277349011456'].includes(userData.userId);
@@ -244,25 +244,45 @@ router.post('/dapp/models/:model', async (ctx: Context) => {
   const model = ctx.req.param('model');
   const { select = [], where = [], update = {}, orderBy = {}, limit = 0, offset = 0 } = await ctx.req.json();
   const builder = new SQLQueryBuilder();
-  if (Object.keys(update).length > 0) {
-    builder.update(model);
-    Object.keys(update).forEach((key) => builder.set(key, update[key]));
-    where.forEach((w) => builder.where(w));
-    if (select) builder.returning(select);
-    const str = builder.build();
-    console.log(str);
-    const query: D1Response = await database.prepare(str).run();
-    return ctx.json({ ...query });
-  } else {
-    builder.select(select).from(model);
-    where.forEach((w) => builder.where(w));
-    Object.keys(orderBy).forEach((key) => builder.orderBy(key, orderBy[key]));
-    builder.page(limit, offset);
-    const str = builder.build();
-    console.log(str);
-    const query: D1Result = await database.prepare(str).all();
-    return ctx.json({ ...query });
-  }
+  builder.select(select).from(model);
+  where.forEach((w) => builder.where(w));
+  Object.keys(orderBy).forEach((key) => builder.orderBy(key, orderBy[key]));
+  builder.page(limit, offset);
+  const str = builder.build();
+  console.log(str);
+  const query: D1Result = await database.prepare(str).all();
+  return ctx.json({ ...query });
+});
+
+router.post('/dapp/models/:model/update', async (ctx: Context) => {
+  const userData = await verifyJwtRequest(ctx);
+  if (!userData) return ctx.text('Unauthorized', 401);
+  const isAllowed = ['234657292610568193', '217775277349011456'].includes(userData.userId);
+  if (!isAllowed) return ctx.json('You are not a developer', 403);
+  const database: D1Database = ctx.env.DB;
+  const model = ctx.req.param('model');
+  const { select = [], where = [], update = {}, orderBy = {}, limit = 0, offset = 0 } = await ctx.req.json();
+  const builder = new SQLQueryBuilder();
+  builder.update(model);
+  Object.keys(update).forEach((key) => builder.set(key, update[key]));
+  where.forEach((w) => builder.where(w));
+  if (select) builder.returning(select);
+  const str = builder.build();
+  console.log(str);
+  const query: D1Response = await database.prepare(str).run();
+  return ctx.json({ ...query });
+});
+
+router.post('/dapp/models/:model/delete', async (ctx: Context) => {
+  const userData = await verifyJwtRequest(ctx);
+  if (!userData) return ctx.text('Unauthorized', 401);
+  const isAllowed = ['234657292610568193', '217775277349011456'].includes(userData.userId);
+  if (!isAllowed) return ctx.json('You are not a developer', 403);
+  const database: D1Database = ctx.env.DB;
+  const model = ctx.req.param('model');
+  const { select = [], where = [], update = {}, orderBy = {}, limit = 0, offset = 0 } = await ctx.req.json();
+  const builder = new SQLQueryBuilder();
+  throw new Error('Not implemented');
 });
 
 /**

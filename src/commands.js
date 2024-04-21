@@ -86,21 +86,21 @@ guildGetRole.addIntegerOption((option) => {
 export const guildAddRole = new SlashCommandBuilder();
 guildAddRole.setName('add-role');
 guildAddRole.setDescription('ADMIN ONLY | Add a guild role for wallet verifications');
-guildAddRole.addRoleOption((option) => {
+guildAddRole.addStringOption((option) => {
   option.setName('name');
   option.setDescription('Give this smart contract role a name');
-  option.setRequired(true);
-  return option;
-});
-guildAddRole.addRoleOption((option) => {
-  option.setName('role');
-  option.setDescription('Select a role to give guild member');
   option.setRequired(true);
   return option;
 });
 guildAddRole.addStringOption((option) => {
   option.setName('contract');
   option.setDescription('Smart contract address (i.e. 0x...)');
+  option.setRequired(true);
+  return option;
+});
+guildAddRole.addRoleOption((option) => {
+  option.setName('role');
+  option.setDescription('Select a role to give guild member');
   option.setRequired(true);
   return option;
 });
