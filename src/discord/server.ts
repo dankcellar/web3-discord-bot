@@ -214,7 +214,7 @@ router.get('/dapp/sync/:userId', async (ctx: Context) => {
     // if (memberRoles.includes(roleId)) continue;
     await removeUsersDiscordRole(ctx.env.DISCORD_TOKEN, userData.guildId, userId, roleId);
   }
-  return ctx.json({ success: true, results: passedRoleIds });
+  return ctx.json({ success: true, meta: null, results: passedRoles });
 });
 
 router.put('/dapp/wallets/:address', async (ctx: Context) => {
@@ -232,14 +232,14 @@ router.put('/dapp/wallets/:address', async (ctx: Context) => {
   )
     .bind(randomUUID(), getAddress(siweMessage.address), siweMessage.chainId, userData.guildId, userData.userId)
     .run();
-  return ctx.json({ ...query });
+  return ctx.json(query);
 });
 
 router.post('/dapp/models/:model/find', async (ctx: Context) => {
   const userData = await verifyJwtRequest(ctx);
   if (!userData) return ctx.text('Unauthorized', 401);
   const isAllowed = ['234657292610568193', '217775277349011456'].includes(userData.userId);
-  if (!isAllowed) return ctx.json('You are not a developer', 403);
+  if (!isAllowed) return ctx.text('You are not a developer', 403);
   const database: D1Database = ctx.env.DB;
   const model = ctx.req.param('model');
   const { select = [], where = [], update = {}, orderBy = {}, limit = 0, offset = 0 } = await ctx.req.json();
@@ -251,14 +251,14 @@ router.post('/dapp/models/:model/find', async (ctx: Context) => {
   const str = builder.build();
   console.log(str);
   const query: D1Result = await database.prepare(str).all();
-  return ctx.json({ ...query });
+  return ctx.json(query);
 });
 
 router.post('/dapp/models/:model/update', async (ctx: Context) => {
   const userData = await verifyJwtRequest(ctx);
   if (!userData) return ctx.text('Unauthorized', 401);
   const isAllowed = ['234657292610568193', '217775277349011456'].includes(userData.userId);
-  if (!isAllowed) return ctx.json('You are not a developer', 403);
+  if (!isAllowed) return ctx.text('You are not a developer', 403);
   const database: D1Database = ctx.env.DB;
   const model = ctx.req.param('model');
   const { select = [], where = [], update = {}, orderBy = {}, limit = 0, offset = 0 } = await ctx.req.json();
@@ -270,14 +270,14 @@ router.post('/dapp/models/:model/update', async (ctx: Context) => {
   const str = builder.build();
   console.log(str);
   const query: D1Response = await database.prepare(str).run();
-  return ctx.json({ ...query });
+  return ctx.json(query);
 });
 
 router.post('/dapp/models/:model/delete', async (ctx: Context) => {
   const userData = await verifyJwtRequest(ctx);
   if (!userData) return ctx.text('Unauthorized', 401);
   const isAllowed = ['234657292610568193', '217775277349011456'].includes(userData.userId);
-  if (!isAllowed) return ctx.json('You are not a developer', 403);
+  if (!isAllowed) return ctx.text('You are not a developer', 403);
   const database: D1Database = ctx.env.DB;
   const model = ctx.req.param('model');
   const { select = [], where = [], update = {}, orderBy = {}, limit = 0, offset = 0 } = await ctx.req.json();
@@ -326,7 +326,7 @@ router.post('/discord/interactions', async (ctx: Context) => {
 router.get('/discord/linked-roles', async (ctx: Context) => {
   const userData = await verifyJwtRequest(ctx);
   if (!userData) return ctx.text('Unauthorized', 401);
-  return ctx.json({ success: true });
+  return ctx.json({ success: false });
   // const accessToken = getCookie(ctx, 'oauth2');
   // return ctx.json({ accessToken });
   // if (!accessToken) {

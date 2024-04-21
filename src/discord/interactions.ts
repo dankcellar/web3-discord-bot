@@ -181,8 +181,8 @@ export async function discordViewRoles(env: Bindings, guildId: string) {
 export async function discordAddRole(
   env: Bindings,
   command: string,
-  roleId: string,
   source: string,
+  roleId: string,
   chain: number,
   formula: string,
   guildId: string
