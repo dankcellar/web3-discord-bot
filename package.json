@@ -18,7 +18,7 @@
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "fantasy-content-generator": "^4.9.1",
-    "hono": "^4.1.5",
+    "hono": "^4.2.7",
     "merkletreejs": "^0.3.11",
     "sequelize": "^6.37.2",
     "viem": "^2.9.5"
