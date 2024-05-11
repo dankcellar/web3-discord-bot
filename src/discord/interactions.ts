@@ -3,7 +3,16 @@ import { InteractionResponseFlags } from 'discord-interactions';
 import { ExecutionContext } from 'hono';
 import { getAddress } from 'viem';
 
-import { MAX_COMMANDS, MAX_WALLETS, doGetRoles, hashString, idConvert, resolveColor } from './handlers';
+import {
+  MAX_COMMANDS,
+  MAX_WALLETS,
+  doGetRoles,
+  doSyncRoles,
+  getGuildPreview,
+  hashString,
+  idConvert,
+  resolveColor,
+} from './handlers';
 import { Bindings } from './server';
 
 const BUTTON_STYLE = {
@@ -41,12 +50,7 @@ export async function discordVerify(env: Bindings, guildId: string, userId: stri
   const state = hashString(userId, env.AUTH_SECRET);
   const wallets: D1Result = await env.DB.prepare('SELECT * FROM Wallets WHERE userId = ?').bind(userId).all();
   let str = `You have **${wallets.results.length}** active Web3 connections. (Maximum **${MAX_WALLETS}**)\n`;
-  str += '```\n';
-  wallets.results.forEach((wallet: any) => {
-    str += `Guild: ${wallet.guildId} - Chain: ${wallet.chain}\n`;
-    str += `${wallet.address}\n\n`;
-  });
-  str += '```\n';
+  // TODO say what roles they have form this guild and what wallets are linked
   const url =
     'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Fwallets&scope=identify';
   return {
@@ -64,9 +68,17 @@ export async function discordVerify(env: Bindings, guildId: string, userId: stri
         components: [
           {
             type: COMPONENT_TYPE.BUTTON,
-            label: 'Add New Wallet', // TODO change to Manage Wallets later
+            label: 'View Your Connections',
+            style: BUTTON_STYLE.PRIMARY,
+            custom_id: wallets.results.length === 0 ? 'unlink' : 'wallet--0',
+            emoji: { id: null, name: '🤖' },
+          },
+          {
+            type: COMPONENT_TYPE.BUTTON,
+            label: 'Add New Wallet',
             style: BUTTON_STYLE.LINK,
             url: `${url}&state=${state}`,
+            emoji: { id: null, name: '🌐' },
           },
         ],
       },
@@ -128,7 +140,7 @@ export async function discordLandingPage(env: Bindings, guildId: string, userId:
             label: "Let's go!",
             style: BUTTON_STYLE.PRIMARY,
             custom_id: 'wallets',
-            disabled: false,
+            emoji: { id: null, name: '🚀' },
           },
         ],
       },
@@ -168,7 +180,7 @@ export async function discordViewRoles(env: Bindings, guildId: string) {
   return {
     embeds: [
       {
-        title: 'Viewing Web3 Guild Roles',
+        title: 'Web3 Guild Roles',
         description: str.slice(0, 4096),
         color: resolveColor('bitcoin'),
         timestamp: new Date().toISOString(),
@@ -276,7 +288,18 @@ export async function discordGetRoles(
     .bind(guildId, wallet.chain)
     .all();
 
-  exc.waitUntil(doGetRoles(env.DISCORD_TOKEN, env.CLIENT_ID, webhookToken, guildId, userId, wallet, commands.results));
+  exc.waitUntil(
+    doGetRoles(
+      env.DISCORD_TOKEN,
+      env.CLIENT_ID,
+      webhookToken,
+      guildId,
+      userId,
+      wallet.chain,
+      [wallet],
+      commands.results
+    )
+  );
 
   return {
     embeds: [
@@ -291,7 +314,92 @@ export async function discordGetRoles(
   };
 }
 
-// await database
-//   .prepare('INSERT INTO Roles (id,guildId,userId,roleId) VALUES (?,?,?,?) ON CONFLICT DO NOTHING')
-//   .bind(crypto.randomUUID(), guildId, userId, roleId)
-//   .run();
+export async function discordViewWallet(env: Bindings, guildId: string, userId: string, limit: number, offset: number) {
+  const wallets: D1Result = await env.DB.prepare('SELECT id, address, chain, guildId FROM Wallets WHERE userId = ?')
+    .bind(userId)
+    .all();
+  const index = parseInt(offset.toString());
+  const wallet: any = wallets.results.length > 0 ? wallets.results[index] : null;
+  let str = 'No wallet found. Please add a wallet to this guild. ✌';
+  if (wallet) {
+    const data = await getGuildPreview(env.DISCORD_TOKEN, wallet.guildId);
+    str = `*Wallet Connection ${index + 1}*\n`;
+    str += `**Guild Name:** ${data['name'] || wallet.guildId}\n`;
+    str += `**Wallet Address:** ${wallet.address}\n`;
+    str += `**Chain ID:** ${wallet.chain}\n`;
+  }
+  const nextNum = index + 1 > wallets.results.length - 1 ? 0 : index + 1;
+  const prevNum = index - 1 < 0 ? wallets.results.length - 1 : index - 1;
+  return {
+    embeds: [
+      {
+        color: resolveColor('bitcoin'),
+        title: 'Web3 Wallet Manager',
+        description: str,
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    components: [
+      {
+        type: COMPONENT_TYPE.ACTION_ROW,
+        components: [
+          {
+            type: COMPONENT_TYPE.BUTTON,
+            label: 'Back',
+            style: BUTTON_STYLE.SECONDARY,
+            custom_id: `wallet--${prevNum}`,
+            emoji: { id: null, name: '⬅' },
+          },
+          {
+            type: COMPONENT_TYPE.BUTTON,
+            label: 'Next',
+            style: BUTTON_STYLE.PRIMARY,
+            custom_id: `wallet--${nextNum}`,
+            emoji: { id: null, name: '➡' },
+          },
+          {
+            type: COMPONENT_TYPE.BUTTON,
+            label: 'Overview',
+            style: BUTTON_STYLE.SUCCESS,
+            custom_id: `wallets--0`,
+            emoji: { id: null, name: '📃' },
+          },
+          {
+            type: COMPONENT_TYPE.BUTTON,
+            label: 'Remove',
+            style: BUTTON_STYLE.DESTRUCTIVE,
+            custom_id: `unlink--${offset}`,
+            emoji: { id: null, name: '➖' },
+          },
+        ],
+      },
+    ],
+    flags: InteractionResponseFlags.EPHEMERAL,
+  };
+}
+
+export async function discordUnlink(
+  exc: ExecutionContext,
+  env: Bindings,
+  guildId: string,
+  userId: string,
+  limit: number,
+  offset: number
+) {
+  const wallet: any = await env.DB.prepare('SELECT id FROM Wallets WHERE userId = ? LIMIT 1 OFFSET ?')
+    .bind(userId, offset)
+    .first();
+  await env.DB.prepare('DELETE FROM Wallets WHERE id = ?').bind(wallet.id).run();
+
+  const wallets: D1Result = await env.DB.prepare('SELECT address, chain FROM Wallets WHERE guildId = ? AND userId = ?')
+    .bind(guildId, userId)
+    .all();
+  const commands: D1Result = await env.DB.prepare(
+    'SELECT source, formula, roleId, chain FROM Commands WHERE guildId = ?'
+  )
+    .bind(guildId)
+    .all();
+
+  exc.waitUntil(doSyncRoles(env.DISCORD_TOKEN, guildId, userId, wallets.results, commands.results));
+  return discordVerify(env, guildId, userId);
+}

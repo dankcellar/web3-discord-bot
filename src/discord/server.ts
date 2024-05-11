@@ -13,13 +13,11 @@ import { doRoll } from './dnd-stuff';
 import {
   MAX_WALLETS,
   abbreviateEthereumAddress,
-  addUsersDiscordRole,
+  doSyncRoles,
   failedToRespond,
   getMembersFromDiscord,
   hashString,
   notAdminDiscord,
-  removeUsersDiscordRole,
-  web3BalanceOfDiscordRoles,
 } from './handlers';
 import {
   discordAddRole,
@@ -27,8 +25,10 @@ import {
   discordLandingPage,
   discordRemoveRole,
   discordSyncRoles,
+  discordUnlink,
   discordVerify,
   discordViewRoles,
+  discordViewWallet,
 } from './interactions';
 import { SQLQueryBuilder } from './query';
 
@@ -170,57 +170,32 @@ router.get('/dapp/sync/:userId', async (ctx: Context) => {
     Boolean(parseInt(userData.permissions) & 8) ||
     ['234657292610568193', '217775277349011456'].includes(userData.userId);
   if (!isAllowed) return ctx.text('Forbidden', 403);
-
   // const member = await getMemberFromDiscord(ctx.env.DISCORD_TOKEN, userData.guildId, userId);
   // if (!member.id) return ctx.text('Discord API request failed', 424);
-
-  const wallets: D1Result = await ctx.env.DB.prepare('SELECT address, chain FROM Wallets WHERE userId = ?')
-    .bind(userId)
+  const wallets: D1Result = await ctx.env.DB.prepare(
+    'SELECT address, chain FROM Wallets WHERE guildId = ? AND userId = ?'
+  )
+    .bind(userData.guildId, userData.userId)
     .all();
   const commands: D1Result = await ctx.env.DB.prepare(
     'SELECT source, formula, roleId, chain FROM Commands WHERE guildId = ?'
   )
     .bind(userData.guildId)
     .all();
-
-  const mappedByChain = { 1: { wallets: [], commands: [] } };
-  wallets.results.forEach((wallet: any) => {
-    if (!mappedByChain[wallet.chain]) mappedByChain[wallet.chain] = { commands: [], wallets: [] };
-    mappedByChain[wallet.chain].wallets.push(wallet);
-  });
-  commands.results.forEach((command: any) => {
-    if (!mappedByChain[command.chain]) mappedByChain[command.chain] = { commands: [], wallets: [] };
-    mappedByChain[command.chain].commands.push(command);
-  });
-
-  const passedRoleIds: Set<string> = new Set();
-  const failedRoleIds: Set<string> = new Set();
-  for (const chain in mappedByChain) {
-    const wallets = mappedByChain[chain].wallets;
-    const commands = mappedByChain[chain].commands;
-    const roleIdResults = await web3BalanceOfDiscordRoles(parseInt(chain), wallets, commands);
-    roleIdResults.passed.forEach((roleId: string) => passedRoleIds.add(roleId));
-    roleIdResults.failed.forEach((roleId: string) => failedRoleIds.add(roleId));
-  }
-
-  // const memberRoles = member.roles.map((role: any) => role.id);
-  const passedRoles = Array.from(passedRoleIds);
-  const failedRoles = Array.from(failedRoleIds);
-  for (const roleId of passedRoles) {
-    // if (!memberRoles.includes(roleId)) continue;
-    await addUsersDiscordRole(ctx.env.DISCORD_TOKEN, userData.guildId, userId, roleId);
-  }
-  for (const roleId of failedRoles) {
-    // if (memberRoles.includes(roleId)) continue;
-    await removeUsersDiscordRole(ctx.env.DISCORD_TOKEN, userData.guildId, userId, roleId);
-  }
-  return ctx.json({ success: true, meta: null, results: passedRoles });
+  const { passed, failed } = await doSyncRoles(
+    ctx.env.DISCORD_TOKEN,
+    userData.guildId,
+    userData.userId,
+    wallets.results,
+    commands.results
+  );
+  return ctx.json({ success: true, meta: null, results: { passed, failed } });
 });
 
 router.put('/dapp/wallets/:address', async (ctx: Context) => {
   const userData = await verifyJwtRequest(ctx);
   if (!userData) return ctx.text('Unauthorized', 401);
-  const count = await ctx.env.DB.prepare('SELECT COUNT(id) AS total FROM Wallets WHERE userId = ?') // const count: number = await ctx.env.DB.prepare('SELECT COUNT(id) AS total FROM Wallets WHERE userId = ?')
+  const count: number = await ctx.env.DB.prepare('SELECT COUNT(id) AS total FROM Wallets WHERE userId = ?')
     .bind(userData.userId)
     .first('total');
   if (count >= MAX_WALLETS) return ctx.text('User has too many wallet connections', 403);
@@ -366,7 +341,6 @@ router.get('/discord/guilds/:guildId/members', async (ctx: Context) => {
   const after = ctx.req.query('after') || '0';
   const limit = ctx.req.query('limit') || '1';
   const full = !!ctx.req.query('full');
-  await new Promise((resolve) => setTimeout(resolve, 1000));
   const { members, snowflake } = await getMembersFromDiscord(ctx.env.DISCORD_TOKEN, guildId, after, limit, full);
   return ctx.json({ members, snowflake });
 });
@@ -425,7 +399,8 @@ async function doInteraction(exc: ExecutionContext, env: Bindings, interaction: 
   // const avatar = !interaction.member ? interaction.user.avatar : interaction.member.user.avatar;
   const permissions = !interaction.member ? '0' : interaction.member.permissions;
   const isAdmin = Boolean(parseInt(permissions) & 8) || ['234657292610568193', '217775277349011456'].includes(userId);
-  const action = data.name || data.custom_id;
+  const action = data.name || data.custom_id.split('--')[0];
+  console.info('Interaction', { action, guildId, userId, permissions, isAdmin });
 
   // Set key values for oauth2
   switch (action) {
@@ -479,6 +454,16 @@ async function doInteraction(exc: ExecutionContext, env: Bindings, interaction: 
       return {
         data: await discordVerify(env, guildId, userId),
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      };
+    case 'wallet':
+      return {
+        data: await discordViewWallet(env, guildId, userId, 1, data.custom_id.split('--')[1]),
+        type: InteractionResponseType.UPDATE_MESSAGE,
+      };
+    case 'unlink':
+      return {
+        data: await discordUnlink(exc, env, guildId, userId, 1, data.custom_id.split('--')[1]),
+        type: InteractionResponseType.UPDATE_MESSAGE,
       };
     case 'view-roles':
       return {

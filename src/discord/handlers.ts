@@ -28,10 +28,11 @@ export async function doGetRoles(
   webhookToken: string,
   guildId: string,
   userId: string,
-  wallet: any,
+  chain: string,
+  wallets: any[],
   commands: any[]
 ) {
-  const roleIdResults = await web3BalanceOfDiscordRoles(wallet.chain, [wallet], commands);
+  const roleIdResults = await web3BalanceOfDiscordRoles(chain, wallets, commands);
   for (const roleId of roleIdResults.passed) {
     const data = await addUsersDiscordRole(token, guildId, userId, roleId);
   }
@@ -48,7 +49,41 @@ export async function doGetRoles(
   return { success: true };
 }
 
-export async function web3BalanceOfDiscordRoles(chain: number, wallets: any[], commands: any[]) {
+export async function doSyncRoles(token: string, guildId: string, userId: string, wallets: any[], commands: any[]) {
+  const mappedByChain = { 1: { wallets: [], commands: [] } };
+
+  wallets.forEach((wallet: any) => {
+    if (!mappedByChain[wallet.chain]) mappedByChain[wallet.chain] = { commands: [], wallets: [] };
+    mappedByChain[wallet.chain].wallets.push(wallet);
+  });
+  commands.forEach((command: any) => {
+    if (!mappedByChain[command.chain]) mappedByChain[command.chain] = { commands: [], wallets: [] };
+    mappedByChain[command.chain].commands.push(command);
+  });
+
+  const passedRoleSet: Set<string> = new Set();
+  const failedRoleSet: Set<string> = new Set();
+  for (const chain in mappedByChain) {
+    const wallets = mappedByChain[chain].wallets;
+    const commands = mappedByChain[chain].commands;
+    const roleIdResults = await web3BalanceOfDiscordRoles(chain, wallets, commands);
+    roleIdResults.passed.forEach((roleId: string) => passedRoleSet.add(roleId));
+    roleIdResults.failed.forEach((roleId: string) => failedRoleSet.add(roleId));
+  }
+
+  const passedRoles = Array.from(passedRoleSet);
+  const failedRoles = Array.from(failedRoleSet);
+  for (const roleId of passedRoles) {
+    await addUsersDiscordRole(token, guildId, userId, roleId);
+  }
+  for (const roleId of failedRoles) {
+    await removeUsersDiscordRole(token, guildId, userId, roleId);
+  }
+
+  return { passed: passedRoles, failed: failedRoles };
+}
+
+export async function web3BalanceOfDiscordRoles(chain: string, wallets: any[], commands: any[]) {
   // Run this on a per chain basis
   const publicClient = createProvider(chain);
   const roleIds: Set<string> = new Set();
@@ -66,6 +101,8 @@ export async function web3BalanceOfDiscordRoles(chain: number, wallets: any[], c
       });
       //@ts-ignore
       const balanceOf = await contract.read.balanceOf([wallet.address]);
+      // TODO do I need this?
+      // if (BigInt(balanceOf) >= BigInt(parseInt(command.formula))) passedIds.add(command.roleId);
       if (parseFloat(balanceOf) >= parseFloat(command.formula)) {
         roleIds.add(command.roleId);
       }
@@ -73,35 +110,6 @@ export async function web3BalanceOfDiscordRoles(chain: number, wallets: any[], c
   }
   const passed = Array.from(roleIds);
   const failed = Array.from(allRoleIds).filter((roleId) => !roleIds.has(roleId));
-  return { passed, failed };
-}
-
-export async function web3BalanceOfDiscordRolesFaster(chain: number, wallets: any[], commands: any[]) {
-  // Run this on a per chain basis
-  const publicClient = createProvider(chain);
-  const passedIds: Set<string> = new Set();
-  const failedIds: Set<string> = new Set();
-  const promises: Promise<bigint>[] = [];
-  for (const command of commands) {
-    for (const wallet of wallets) {
-      const contract = getContract({
-        address: command.source,
-        abi: MINI_ABI,
-        //@ts-ignore
-        client: publicClient,
-      });
-      //@ts-ignore
-      promises.push(contract.read.balanceOf([wallet.address]));
-    }
-  }
-  const balanceOfArray: bigint[] = await Promise.all(promises);
-  balanceOfArray.forEach((balanceOf, index) => {
-    const command = commands[index];
-    if (BigInt(balanceOf) >= BigInt(parseInt(command.formula))) passedIds.add(command.roleId);
-    else failedIds.add(command.roleId);
-  });
-  const passed = Array.from(passedIds);
-  const failed = Array.from(failedIds);
   return { passed, failed };
 }
 
@@ -159,6 +167,27 @@ export async function getMembersFromDiscord(
   } else {
     return { members: members, snowflake: snowflake };
   }
+}
+
+export async function getGuild(token: string, guildId: string) {
+  const res = await fetch('https://discord.com/api/v10' + Routes.guild(guildId), {
+    headers: { Authorization: `Bot ${token}` },
+  });
+  return await res.json();
+}
+
+export async function getGuildPreview(token: string, guildId: string) {
+  const res = await fetch('https://discord.com/api/v10' + Routes.guildPreview(guildId), {
+    headers: { Authorization: `Bot ${token}` },
+  });
+  return await res.json();
+}
+
+export async function getGuildRoles(token: string, guildId: string) {
+  const res = await fetch('https://discord.com/api/v10' + Routes.guildRoles(guildId), {
+    headers: { Authorization: `Bot ${token}` },
+  });
+  return await res.json();
 }
 
 export async function editWebhookMessage(clientId: string, webhookToken: string, body: any) {
