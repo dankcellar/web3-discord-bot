@@ -5,9 +5,8 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { cors } from 'hono/cors';
 import { decode, sign, verify } from 'hono/jwt';
 import { randomUUID } from 'node:crypto';
+import { SiweMessage, generateNonce } from 'siwe-cloudflare';
 import { getAddress } from 'viem';
-
-import { SiweMessage, generateNonce } from '../siwe/index';
 
 import { doRoll } from './dnd-stuff';
 import {
