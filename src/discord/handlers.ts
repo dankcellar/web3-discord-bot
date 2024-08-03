@@ -2,7 +2,7 @@ import { KVNamespace } from '@cloudflare/workers-types';
 import { Routes } from 'discord-api-types/v10';
 import { InteractionResponseFlags } from 'discord-interactions';
 import { createHash } from 'node:crypto';
-import { getContract } from 'viem';
+import { getAddress, getContract } from 'viem';
 
 import { MINI_ABI, createProvider } from './mini-web3';
 
@@ -81,6 +81,58 @@ export async function doSyncRoles(token: string, guildId: string, userId: string
   }
 
   return { passed: passedRoles, failed: failedRoles };
+}
+
+export async function doExportRole(
+  token: string,
+  clientId: string,
+  webhookToken: string,
+  chain: string,
+  roleId: string,
+  wallets: any[],
+  commands: any[]
+) {
+  const apiKey = 'UTv1QHlSnFykTZ-Ip9DVsCS55Tutk5xZ';
+  const contracts = commands.map((command) => command.source);
+
+  const ownersSet = new Set();
+  for (const contract of contracts) {
+    console.info;
+    const options = { method: 'GET', headers: { accept: 'application/json' } };
+    const ownersRes = await fetch(
+      `https://eth-mainnet.g.alchemy.com/nft/v3/${apiKey}/getOwnersForContract?contractAddress=${contract}`,
+      options
+    );
+    console.log('STATUS', ownersRes.status);
+    const { owners = [], totalCount = 0, pageKey = null } = await ownersRes.json();
+    for (const owner of owners) {
+      ownersSet.add(getAddress(owner));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  // Get all userId from wallets and ensure they are all unique
+  // const userIds = wallets.reduce((acc, wallet) => acc.add(wallet.userId), new Set<string>());
+
+  const walletsSet = new Set();
+  for (const wallet of wallets) {
+    if (ownersSet.has(wallet.address)) {
+      walletsSet.add(wallet.address);
+    }
+  }
+
+  const desc = Array.from(walletsSet).join('\n');
+  const data = await editWebhookMessage(clientId, webhookToken, {
+    embeds: [
+      {
+        color: resolveColor('hacker'),
+        title: 'Exported Holders by Role',
+        description: desc,
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  });
+  return { success: true };
 }
 
 export async function web3BalanceOfDiscordRoles(chain: string, wallets: any[], commands: any[]) {
@@ -203,7 +255,7 @@ export async function editWebhookMessage(clientId: string, webhookToken: string,
 
 export async function rateLimitDiscord(client: KVNamespace, userId: string, key: string, limit: number) {
   // If the user is a dev, don't rate limit
-  if (['234657292610568193', '217775277349011456'].includes(userId)) return null;
+  if (isAdminOverride(userId)) return null;
   // Rate limit this function
   const value = await client.get(key, 'text');
   if (!value) {
@@ -283,8 +335,14 @@ export function abbreviateEthereumAddress(address: any, length: number = 6) {
   return `${address.slice(0, length)}...${address.slice(-length)}`;
 }
 
-export function hashString(string1: string, string2: string) {
-  const combinedString = string1 + string2;
-  const hash = createHash('sha256').update(combinedString).digest('hex');
-  return hash;
+export function isAdminOverride(userId: string) {
+  return ['234657292610568193', '217775277349011456'].includes(userId);
+}
+
+export function hashString(...strings: string[]) {
+  const hash = createHash('sha256');
+  for (const string of strings) {
+    hash.update(string);
+  }
+  return hash.digest('hex');
 }

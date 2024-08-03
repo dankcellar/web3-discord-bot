@@ -6,10 +6,10 @@ import { getAddress } from 'viem';
 import {
   MAX_COMMANDS,
   MAX_WALLETS,
+  doExportRole,
   doGetRoles,
   doSyncRoles,
   getGuildPreview,
-  hashString,
   idConvert,
   resolveColor,
 } from './handlers';
@@ -34,6 +34,9 @@ const COMPONENT_TYPE = {
   CHANNEL_SELECT: 8,
 };
 
+const REDIRECT_URI =
+  'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.rarity.bot%2Foauth2%2Fredirect%2Fdiscord&scope=guilds.members.read+identify';
+
 const BLANK = '\u200B';
 
 //https://discord.com/developers/docs/interactions/receiving-and-responding#interaction-response-object-interaction-callback-data-structure
@@ -47,12 +50,10 @@ const BLANK = '\u200B';
 // attachments? *	array of partial attachment objects	attachment objects with filename and description
 
 export async function discordVerify(env: Bindings, guildId: string, userId: string) {
-  const state = hashString(userId, env.AUTH_SECRET);
+  const state = `${guildId}--wallets`;
   const wallets: D1Result = await env.DB.prepare('SELECT * FROM Wallets WHERE userId = ?').bind(userId).all();
   let str = `You have **${wallets.results.length}** active Web3 connections. (Maximum **${MAX_WALLETS}**)\n`;
   // TODO say what roles they have form this guild and what wallets are linked
-  const url =
-    'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Fwallets&scope=identify';
   return {
     embeds: [
       {
@@ -68,17 +69,17 @@ export async function discordVerify(env: Bindings, guildId: string, userId: stri
         components: [
           {
             type: COMPONENT_TYPE.BUTTON,
-            label: 'View Your Connections',
+            label: 'View Your Wallets',
             style: BUTTON_STYLE.PRIMARY,
             custom_id: wallets.results.length === 0 ? 'unlink' : 'wallet--0',
-            emoji: { id: null, name: '🤖' },
+            // emoji: { id: null, name: '🤖' },
           },
           {
             type: COMPONENT_TYPE.BUTTON,
             label: 'Add New Wallet',
             style: BUTTON_STYLE.LINK,
-            url: `${url}&state=${state}`,
-            emoji: { id: null, name: '🌐' },
+            url: `${REDIRECT_URI}&state=${state}`,
+            // emoji: { id: null, name: '🌐' },
           },
         ],
       },
@@ -88,15 +89,12 @@ export async function discordVerify(env: Bindings, guildId: string, userId: stri
 }
 
 export async function discordSyncRoles(env: Bindings, guildId: string, userId: string) {
-  const state = hashString(userId, env.AUTH_SECRET);
-  const url =
-    'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Froles&scope=identify';
+  const state = `${guildId}--roles`;
   return {
     embeds: [
       {
         color: resolveColor('purple'),
         title: 'Discord Role Sync (Admin)',
-        // description: 'Do **NOT** share the embedded link!',
         timestamp: new Date().toISOString(),
       },
     ],
@@ -108,7 +106,7 @@ export async function discordSyncRoles(env: Bindings, guildId: string, userId: s
             type: COMPONENT_TYPE.BUTTON,
             label: 'Start Guild Sync',
             style: BUTTON_STYLE.LINK,
-            url: `${url}&state=${state}`,
+            url: `${REDIRECT_URI}&state=${state}`,
           },
         ],
       },
@@ -118,9 +116,6 @@ export async function discordSyncRoles(env: Bindings, guildId: string, userId: s
 }
 
 export async function discordLandingPage(env: Bindings, guildId: string, userId: string) {
-  // const state = hashString(userId, env.AUTH_SECRET);
-  // const url =
-  //   'https://discord.com/oauth2/authorize?client_id=330539844889477121&response_type=code&redirect_uri=https%3A%2F%2Fapi.raritynfts.xyz%2Foauth2%2Fdiscord%2Froles&scope=identify';
   return {
     embeds: [
       {
@@ -150,18 +145,17 @@ export async function discordLandingPage(env: Bindings, guildId: string, userId:
 
 export async function discordViewRoles(env: Bindings, guildId: string) {
   const commands: D1Result = await env.DB.prepare(
-    'SELECT source, formula, roleId, chain FROM Commands WHERE guildId = ?'
+    'SELECT command, source, formula, roleId, chain FROM Commands WHERE guildId = ?'
   )
     .bind(guildId)
     .all();
   const embedsMap = {};
-  commands.results.forEach((command: any) => {
-    const { source, formula, roleId, chain } = command;
+  commands.results.forEach(({ command, source, formula, roleId, chain }) => {
     // add to embedsMap by chain -> roleId -> formula -> roleId
     if (!embedsMap[chain]) embedsMap[chain] = {};
     if (!embedsMap[chain][roleId]) embedsMap[chain][roleId] = {};
     if (!embedsMap[chain][roleId][formula]) embedsMap[chain][roleId][formula] = [];
-    embedsMap[chain][roleId][formula].push(source);
+    embedsMap[chain][roleId][formula].push(command);
   });
   let str = '';
   for (const chain in embedsMap) {
@@ -170,8 +164,8 @@ export async function discordViewRoles(env: Bindings, guildId: string) {
       for (const formula in embedsMap[chain][roleId]) {
         str += `*Get this role if balanceOf is ${parseInt(formula.length > 18 ? formula.slice(0, -18) : formula)} or more (Chain ID: ${chain})*\n`;
         str += '```\n';
-        for (const source of embedsMap[chain][roleId][formula]) {
-          str += `${source}\n`;
+        for (const command of embedsMap[chain][roleId][formula]) {
+          str += `${command}\n`;
         }
         str += '```\n';
       }
@@ -186,7 +180,6 @@ export async function discordViewRoles(env: Bindings, guildId: string) {
         timestamp: new Date().toISOString(),
       },
     ],
-    flags: InteractionResponseFlags.EPHEMERAL,
   };
 }
 
@@ -257,14 +250,14 @@ export async function discordGetRoles(
     .all();
 
   const wallet = { id: null, address: null, chain: null, guildId: guildId, userId: userId };
-  wallets.results.forEach((w: any) => {
+  wallets.results.forEach(({ id, address, chain, guildId }) => {
     // Best guess the first wallet from order by updatedAt
-    if (!wallet.chain && w.address === address) {
-      wallet.chain = !chain ? w.chain : chain;
-      wallet.address = w.address;
+    if (!wallet.chain && address === address) {
+      wallet.chain = !chain ? chain : chain;
+      wallet.address = address;
     }
     // If wallet is already apart of guild, set id
-    if (w.address === wallet.address && w.chain === wallet.chain && w.guildId === wallet.guildId) wallet.id = w.id;
+    if (address === wallet.address && chain === wallet.chain && guildId === wallet.guildId) wallet.id = id;
   });
   if (!wallet.address) throw new Error('Wallet address not found');
 
@@ -310,7 +303,6 @@ export async function discordGetRoles(
         timestamp: new Date().toISOString(),
       },
     ],
-    flags: InteractionResponseFlags.EPHEMERAL,
   };
 }
 
@@ -348,28 +340,28 @@ export async function discordViewWallet(env: Bindings, guildId: string, userId: 
             label: 'Back',
             style: BUTTON_STYLE.SECONDARY,
             custom_id: `wallet--${prevNum}`,
-            emoji: { id: null, name: '⬅' },
+            // emoji: { id: null, name: '⬅' },
           },
           {
             type: COMPONENT_TYPE.BUTTON,
             label: 'Next',
             style: BUTTON_STYLE.PRIMARY,
             custom_id: `wallet--${nextNum}`,
-            emoji: { id: null, name: '➡' },
+            // emoji: { id: null, name: '➡' },
           },
           {
             type: COMPONENT_TYPE.BUTTON,
-            label: 'Overview',
+            label: 'Home',
             style: BUTTON_STYLE.SUCCESS,
             custom_id: `wallets--0`,
-            emoji: { id: null, name: '📃' },
+            // emoji: { id: null, name: '🗺' },
           },
           {
             type: COMPONENT_TYPE.BUTTON,
             label: 'Remove',
             style: BUTTON_STYLE.DESTRUCTIVE,
             custom_id: `unlink--${offset}`,
-            emoji: { id: null, name: '➖' },
+            // emoji: { id: null, name: '🗑' },
           },
         ],
       },
@@ -395,11 +387,47 @@ export async function discordUnlink(
     .bind(guildId, userId)
     .all();
   const commands: D1Result = await env.DB.prepare(
-    'SELECT source, formula, roleId, chain FROM Commands WHERE guildId = ?'
+    'SELECT command, source, formula, roleId, chain FROM Commands WHERE guildId = ?'
   )
     .bind(guildId)
     .all();
 
   exc.waitUntil(doSyncRoles(env.DISCORD_TOKEN, guildId, userId, wallets.results, commands.results));
   return discordVerify(env, guildId, userId);
+}
+
+export async function discordRoleHolders(
+  exc: ExecutionContext,
+  env: Bindings,
+  webhookToken: string,
+  guildId: string,
+  roleId: string
+) {
+  const chain = '1';
+  const wallets = await env.DB.prepare(
+    'SELECT DISTINCT userId, guildId, address FROM Wallets WHERE guildId = ? AND chain = ?'
+  )
+    .bind(guildId, chain)
+    .all();
+  const commands = await env.DB.prepare(
+    'SELECT DISTINCT source FROM Commands WHERE guildId = ? AND roleId = ? AND chain = ?'
+  )
+    .bind(guildId, roleId, chain)
+    .all();
+
+  exc.waitUntil(
+    doExportRole(env.DISCORD_TOKEN, env.CLIENT_ID, webhookToken, roleId, chain, wallets.results, commands.results)
+  );
+
+  return {
+    embeds: [
+      {
+        color: resolveColor('purple'),
+        title: 'Exporting Role Holders',
+        // description: `${idConvert(userId)} is syncing guild role(s) to their wallet!`,
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    flags: InteractionResponseFlags.EPHEMERAL,
+  };
 }

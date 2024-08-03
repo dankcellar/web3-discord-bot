@@ -100,7 +100,7 @@ guildAddRole.addStringOption((option) => {
 });
 guildAddRole.addRoleOption((option) => {
   option.setName('role');
-  option.setDescription('Select a role to give guild member');
+  option.setDescription('Select a role to add to guild members');
   option.setRequired(true);
   return option;
 });
@@ -125,7 +125,7 @@ export const guildRemoveRole = new SlashCommandBuilder();
 guildRemoveRole.setName('remove-role');
 guildRemoveRole.setDescription('ADMIN ONLY | Remove a guild role from wallet verifications');
 guildRemoveRole.addStringOption((option) => {
-  option.setName('interaction');
+  option.setName('name');
   option.setDescription('Select a guild interaction to delete');
   option.setAutocomplete(true);
   option.setRequired(true);
@@ -140,6 +140,21 @@ export const guildLandingPage = new SlashCommandBuilder();
 guildLandingPage.setName('landing');
 guildLandingPage.setDescription('ADMIN ONLY | Create a landing page for wallet verifications');
 guildLandingPage.setDefaultMemberPermissions('0');
+
+/**
+ * guildWalletHolders
+ */
+export const guildWalletHolders = new SlashCommandBuilder();
+guildWalletHolders.setName('holders');
+guildWalletHolders.setDescription('ADMIN ONLY | Export wallets of holders from based on a role (AlchemySDK ETH)');
+guildWalletHolders.setDefaultMemberPermissions('0');
+guildWalletHolders.addRoleOption((option) => {
+  option.setName('role');
+  option.setDescription('Select a role to export wallet holders');
+  option.setRequired(true);
+  return option;
+  // TODO add option for by contract filter
+});
 
 /**
  * guildContextThing
@@ -163,6 +178,7 @@ const COMMANDS = {
   REMOVE_ROLE: guildRemoveRole,
   SYNC_ROLES: guildSyncRoles,
   LANDING: guildLandingPage,
+  HOLDERS: guildWalletHolders,
 
   // Deprecated commands
   // VIEWER: globalViewer,

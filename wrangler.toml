@@ -6,7 +6,7 @@ logpush = true
 
 [[kv_namespaces]]
 binding = "KV"
-id = "b1f26e7bf10143c8b5e170e15db6505a"
+id = "8fe1c0a7c4f94a97b07b4fd81aad6f68"
 
 [[d1_databases]]
 binding = "DB"
@@ -14,3 +14,8 @@ database_name = "discord-db"
 database_id = "c6506d9f-aa59-4ca7-9ada-cfd02ffc2d39"
 
 [vars]
+
+
+
+
+

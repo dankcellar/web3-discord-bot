@@ -31,7 +31,7 @@ try {
     {
       key: 'wallets',
       name: 'Wallets Connected',
-      description: 'Wallets connected greater than',
+      description: 'Have at least one wallet connected to the bot',
       type: 2,
     },
     // {
