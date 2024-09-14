@@ -180,6 +180,7 @@ export async function discordViewRoles(env: Bindings, guildId: string) {
         timestamp: new Date().toISOString(),
       },
     ],
+    flags: InteractionResponseFlags.EPHEMERAL,
   };
 }
 
@@ -303,6 +304,7 @@ export async function discordGetRoles(
         timestamp: new Date().toISOString(),
       },
     ],
+    flags: InteractionResponseFlags.EPHEMERAL,
   };
 }
 
