@@ -7,7 +7,7 @@ import { getAddress, getContract } from 'viem';
 import { MINI_ABI, createProvider } from './mini-web3';
 
 export const MAX_WALLETS = 10;
-export const MAX_COMMANDS = 100;
+export const MAX_COMMANDS = 1000;
 
 // https://colorswall.com/palette/157
 // #ffffff 	RGB(255, 255, 255) 	— 	White
